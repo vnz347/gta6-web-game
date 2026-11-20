@@ -1,53 +1,81 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Solmar: keyboard and mouse state. One object, read by the player, the
+// vehicle and the menu code; edge-triggered keys (pressed this frame) are
+// cleared at the end of each frame by main.js.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
-
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+export function createInput() {
+  const input = {
+    keys: new Set(), // codes held down right now
+    pressed: new Set(), // codes pressed since the last frame
+    mouseDown: false,
+    mousePressed: false,
+    mouseX: 0,
+    mouseY: 0,
+    wheel: 0, // mouse wheel delta since the last frame
+    anyKey: false, // any key pressed since the last frame
+  };
 
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
+    if (event.code === 'Tab') event.preventDefault();
+    if (!event.repeat) {
+      input.pressed.add(event.code);
+      input.anyKey = true;
+    }
+    input.keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
+    input.keys.delete(event.code);
   });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
   window.addEventListener('blur', () => {
-    left = false;
-    right = false;
+    input.keys.clear();
   });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
+  window.addEventListener('mousedown', (event) => {
+    if (event.button === 0) {
+      input.mouseDown = true;
+      input.mousePressed = true;
+    }
   });
+  window.addEventListener('mouseup', (event) => {
+    if (event.button === 0) input.mouseDown = false;
+  });
+  window.addEventListener('mousemove', (event) => {
+    input.mouseX = event.clientX;
+    input.mouseY = event.clientY;
+  });
+  window.addEventListener('wheel', (event) => {
+    input.wheel += event.deltaY;
+  }, { passive: true });
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+  return input;
+}
+
+/** True while the key is held. */
+export function down(input, code) {
+  return input.keys.has(code);
+}
+
+/** True only on the frame the key went down. */
+export function pressed(input, code) {
+  return input.pressed.has(code);
+}
+
+/** -1/0/1 steering from A/D or the arrow keys. */
+export function steerAxis(input) {
+  const left = down(input, 'KeyA') || down(input, 'ArrowLeft');
+  const right = down(input, 'KeyD') || down(input, 'ArrowRight');
+  return (right ? 1 : 0) - (left ? 1 : 0);
+}
+
+/** -1/0/1 throttle from W/S or the arrow keys. */
+export function throttleAxis(input) {
+  const fwd = down(input, 'KeyW') || down(input, 'ArrowUp');
+  const back = down(input, 'KeyS') || down(input, 'ArrowDown');
+  return (fwd ? 1 : 0) - (back ? 1 : 0);
+}
+
+/** Clear the per-frame edges; main.js calls this once per frame. */
+export function endFrame(input) {
+  input.pressed.clear();
+  input.mousePressed = false;
+  input.wheel = 0;
+  input.anyKey = false;
 }

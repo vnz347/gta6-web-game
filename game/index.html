@@ -3,17 +3,284 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Solmar — Open-World Getaway</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1016; }
+  body { font-family: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif; color: #eef1f5; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* ---------- HUD frame ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .panel { background: rgba(8, 12, 18, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 10px; backdrop-filter: blur(4px); }
+
+  /* Mission tracker + police panel, top left, stacked so they never overlap */
+  #tl { position: absolute; top: 14px; left: 14px; width: 330px; display: flex; flex-direction: column; gap: 10px; }
+  #mt { width: 100%; padding: 0 0 10px; overflow: hidden; }
+  #mt .hazard { height: 8px; background: repeating-linear-gradient(45deg, #ffd21f 0 12px, #111111 12px 24px); }
+  #mt-title { padding: 8px 12px 0; font-size: 15px; font-weight: 900; letter-spacing: 0.06em; color: #ffd21f; }
+  #mt-stage { margin: 6px 12px 0; display: inline-block; background: #ffd21f; color: #111; font-weight: 900; font-size: 13px; padding: 2px 8px; border-radius: 4px; }
+  #mt-objective { padding: 6px 12px 0; font-size: 16px; font-weight: 700; line-height: 1.25; }
+  #mt-next { padding: 4px 12px 0; font-size: 13px; color: #9fb0c3; }
+  #mt-target { margin: 8px 12px 0; height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  #mt-target-fill { height: 100%; width: 100%; background: #ff5a3c; }
+
+  /* Police panel, under the tracker */
+  #pp { width: 100%; padding: 10px 12px; border-left: 4px solid #3b82ff; }
+  #pp-head { display: flex; justify-content: space-between; font-weight: 900; letter-spacing: 0.08em; font-size: 14px; color: #ff6a5a; }
+  #pp-count { color: #eef1f5; }
+  .prow { display: flex; justify-content: space-between; font-size: 14px; padding: 3px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+  .prow:first-of-type { border-top: none; }
+  .pname { font-weight: 900; color: #7fb0ff; width: 82px; }
+  .prole { color: #ffb0a8; flex: 1; }
+  .pdist { color: #c8d2de; }
+  .prow.more { color: #9fb0c3; font-size: 12px; }
+
+  /* Top right: clock, money, stars, rank, weapons, crew — one column */
+  #tr { position: absolute; top: 14px; right: 14px; width: 300px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  #clock { font-size: 15px; color: #c8d2de; font-weight: 700; }
+  #money { font-size: 40px; font-weight: 900; color: #7fe8c8; line-height: 1; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  #stars { font-size: 26px; letter-spacing: 4px; color: rgba(255,255,255,0.35); text-shadow: 0 2px 6px rgba(0,0,0,0.7); }
+  #stars.hot { color: #ffd21f; }
+  #airunit { font-size: 13px; font-weight: 900; color: #ff6a5a; letter-spacing: 0.1em; }
+  #rankbox { width: 100%; padding: 8px 10px; text-align: left; }
+  #rank-num { font-size: 12px; color: #7fe8c8; font-weight: 900; letter-spacing: 0.1em; }
+  #rank-name { font-size: 20px; font-weight: 900; }
+  #rank-bar { height: 8px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; margin: 4px 0; }
+  #rank-fill { height: 100%; width: 0; background: #7fe8c8; }
+  #rank-rp { font-size: 12px; color: #9fb0c3; }
+
+  /* Weapon slots + crew, right side */
+  #weapons { display: flex; gap: 6px; }
+  .wslot { width: 58px; padding: 6px 4px; text-align: center; background: rgba(8,12,18,0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; }
+  .wslot.sel { border-color: #ffd21f; box-shadow: 0 0 0 2px rgba(255,210,31,0.35); }
+  .wkey { display: block; font-size: 11px; color: #9fb0c3; }
+  .wname { display: block; font-size: 13px; font-weight: 900; }
+  .wammo { display: block; font-size: 12px; color: #7fe8c8; }
+  #crew { width: 250px; display: flex; flex-direction: column; gap: 6px; }
+  .crew-card { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: rgba(8,12,18,0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; }
+  .crew-card.ready { border-color: rgba(127,232,200,0.6); }
+  .ckey { width: 22px; height: 22px; line-height: 22px; text-align: center; background: #ffd21f; color: #111; font-weight: 900; border-radius: 4px; font-size: 13px; flex-shrink: 0; }
+  .crew-body { flex: 1; display: flex; flex-direction: column; }
+  .cability { font-size: 14px; font-weight: 900; letter-spacing: 0.04em; }
+  .cname { font-size: 12px; color: #9fb0c3; }
+  .ccd { font-size: 12px; font-weight: 900; color: #ffd21f; }
+
+  /* Bottom left: location, minimap, vitals */
+  #loc { position: absolute; left: 14px; bottom: 288px; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  #loc-name { font-size: 30px; font-weight: 900; color: #ffd21f; letter-spacing: 0.04em; line-height: 1; }
+  #loc-street { font-size: 15px; font-weight: 700; }
+  #loc-zone { font-size: 12px; color: #c8d2de; letter-spacing: 0.08em; }
+  #minimap-wrap { position: absolute; left: 14px; bottom: 88px; width: 190px; height: 190px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.25); box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+  #minimap { width: 190px; height: 190px; display: block; }
+  #vitals { position: absolute; left: 14px; bottom: 14px; width: 190px; padding: 8px 10px; }
+  .vrow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 900; margin: 3px 0; }
+  .vbar { flex: 1; height: 9px; background: rgba(255,255,255,0.15); border-radius: 4px; overflow: hidden; }
+  #hp-fill { height: 100%; background: #51d88a; }
+  #ar-fill { height: 100%; background: #5aa8ff; }
+  .vnum { width: 26px; text-align: right; }
+
+  /* Bottom right: speed, vehicle, radio */
+  #br { position: absolute; right: 14px; bottom: 14px; text-align: right; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+  #speed { font-size: 64px; font-weight: 900; line-height: 0.9; }
+  #speed-unit { font-size: 14px; font-weight: 900; letter-spacing: 0.2em; color: #c8d2de; }
+  #veh-name { font-size: 17px; font-weight: 900; color: #7fe8c8; }
+  #veh-dmg { font-size: 14px; font-weight: 900; color: #ffb0a8; }
+  #radio { font-size: 14px; color: #ffd21f; font-weight: 700; margin-top: 4px; }
+
+  /* Dialogue, notes, prompts */
+  #dlg { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: 520px; max-width: 60vw; display: flex; gap: 10px; padding: 10px 14px; align-items: flex-start; }
+  #dlg-avatar { width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; text-align: center; line-height: 42px; font-size: 20px; font-weight: 900; color: #111; }
+  #dlg-name { font-size: 14px; font-weight: 900; color: #7fe8c8; letter-spacing: 0.06em; }
+  #dlg-text { font-size: 16px; line-height: 1.3; }
+  #note { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); padding: 8px 16px; font-size: 15px; font-weight: 700; background: rgba(8,12,18,0.8); border-radius: 8px; border: 1px solid rgba(255,210,31,0.4); }
+  #prompt { position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%); padding: 6px 14px; font-size: 15px; font-weight: 900; letter-spacing: 0.08em; background: rgba(255,210,31,0.92); color: #111; border-radius: 6px; }
+  #prompt:empty { display: none; }
+
+  /* Crosshair, banner, objective arrow, damage */
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 4px #000; }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { top: 10px; left: 0; width: 22px; height: 2px; }
+  #banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; text-shadow: 0 3px 14px rgba(0,0,0,0.8); }
+  #banner-title { font-size: 46px; font-weight: 900; letter-spacing: 0.05em; color: #ffd21f; }
+  #banner-sub { font-size: 20px; font-weight: 700; }
+  #obj-arrow { position: absolute; width: 0; height: 0; border-left: 13px solid transparent; border-right: 13px solid transparent; border-bottom: 24px solid #ffd21f; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7)); }
+  #obj-arrow-dist { position: absolute; left: 50%; top: 28px; transform: translateX(-50%); font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 1px 4px #000; white-space: nowrap; }
+  #dmg { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(220,30,20,0.55) 100%); opacity: 0; pointer-events: none; z-index: 6; }
+  #vignette { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 60%, rgba(120,0,0,0.4) 100%); opacity: 0; pointer-events: none; z-index: 6; }
+
+  /* Weapon wheel */
+  #wheel { position: absolute; left: 50%; top: 50%; width: 340px; height: 340px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(8,12,18,0.6); border: 2px solid rgba(255,255,255,0.2); }
+  .wheel-seg { position: absolute; transform: translate(-50%, -50%); padding: 10px 14px; background: rgba(8,12,18,0.85); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; font-weight: 900; font-size: 15px; white-space: nowrap; }
+  .wheel-seg.sel { border-color: #ffd21f; background: rgba(255,210,31,0.9); color: #111; }
+  #wheel-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; font-weight: 900; font-size: 16px; white-space: pre-line; }
+
+  /* ---------- Full-screen overlays ---------- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(6, 10, 16, 0.82); backdrop-filter: blur(3px); }
+  .bigbtn { pointer-events: auto; cursor: pointer; background: #ffd21f; color: #111; border: none; border-radius: 8px; padding: 14px 34px; font-size: 19px; font-weight: 900; letter-spacing: 0.06em; margin: 6px; font-family: inherit; }
+  .bigbtn:hover { background: #ffe14d; }
+  .bigbtn.ghost { background: transparent; color: #eef1f5; border: 2px solid rgba(255,255,255,0.4); }
+  .bigbtn.ghost:hover { border-color: #ffd21f; color: #ffd21f; }
+  .bigbtn:disabled { opacity: 0.4; cursor: default; }
+
+  #title { background: linear-gradient(180deg, rgba(6,10,16,0.25) 0%, rgba(6,10,16,0.78) 70%); }
+  #title-logo { font-size: 110px; font-weight: 900; letter-spacing: 0.08em; color: #ffd21f; text-shadow: 0 6px 30px rgba(0,0,0,0.8); line-height: 0.9; }
+  #title-tag { font-size: 22px; font-weight: 700; letter-spacing: 0.3em; color: #7fe8c8; margin: 6px 0 26px; }
+  #title-controls { display: grid; grid-template-columns: auto auto; gap: 4px 26px; font-size: 15px; color: #c8d2de; margin-top: 22px; text-align: left; }
+  #title-controls b { color: #fff; }
+  #title-foot { margin-top: 20px; font-size: 13px; color: #8b93a3; }
+
+  /* Pause menu */
+  #pause .pwrap { display: flex; gap: 18px; align-items: flex-start; max-width: 1060px; width: 94vw; }
+  .pcol { flex: 1; }
+  #pause h2 { margin: 0 0 10px; font-size: 34px; letter-spacing: 0.06em; color: #ffd21f; }
+  #pause-map { width: 420px; height: 420px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.25); }
+  .mrow { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 15px; }
+  .mrow.done { color: #7fe8c8; }
+  .mrow.active { color: #ffd21f; font-weight: 900; }
+  .mrow.locked { color: #6a7482; }
+  .mstatus { font-size: 12px; letter-spacing: 0.08em; }
+  .srow { display: flex; justify-content: space-between; padding: 5px 10px; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .srow b { color: #ffd21f; }
+  #pause .btnrow { margin-top: 14px; display: flex; flex-wrap: wrap; }
+
+  /* Garage */
+  #garage .gwrap { width: 620px; max-width: 94vw; padding: 24px; }
+  #garage h2 { margin: 0 0 4px; font-size: 32px; color: #ffd21f; letter-spacing: 0.05em; }
+  #garage-money { font-size: 20px; font-weight: 900; color: #7fe8c8; margin-bottom: 12px; }
+  .grow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 16px; }
+  .grow button { pointer-events: auto; cursor: pointer; background: #ffd21f; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 900; font-family: inherit; }
+  .grow button:disabled { opacity: 0.35; cursor: default; }
+
+  /* Busted / wasted / complete */
+  #busted h1, #wasted h1, #complete h1 { font-size: 84px; margin: 0; letter-spacing: 0.1em; }
+  #busted h1 { color: #5aa8ff; }
+  #wasted h1 { color: #ff5a3c; }
+  #complete h1 { color: #ffd21f; }
+  #busted p, #wasted p, #complete p { font-size: 19px; color: #c8d2de; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<canvas id="game" aria-label="Solmar: an open-world getaway game. Drive with W A S D, enter cars with E."></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud" class="hidden">
+  <div id="tl">
+    <div id="mt" class="panel"><div class="hazard"></div>
+      <div id="mt-title">FREE ROAM</div>
+      <span id="mt-stage"></span>
+      <div id="mt-objective"></div>
+      <div id="mt-next"></div>
+      <div id="mt-target" class="hidden"><div id="mt-target-fill"></div></div>
+    </div>
+    <div id="pp" class="panel hidden">
+      <div id="pp-head"><span>SCP RESPONSE</span><span id="pp-count"></span></div>
+      <div id="pp-list"></div>
+    </div>
+  </div>
+
+  <div id="tr">
+    <div id="clock">15:47</div>
+    <div id="money">$500</div>
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="airunit" class="hidden">AIR UNIT DEPLOYED</div>
+    <div id="rankbox" class="panel">
+      <div id="rank-num">RANK 1</div>
+      <div id="rank-name">ROOKIE</div>
+      <div id="rank-bar"><div id="rank-fill"></div></div>
+      <div id="rank-rp">0 / 500 RP</div>
+    </div>
+    <div id="weapons"></div>
+    <div id="crew"></div>
+  </div>
+
+  <div id="loc">
+    <div id="loc-name">PALM STRAND</div>
+    <div id="loc-street">Strand Boulevard</div>
+    <div id="loc-zone">TOURIST STRIP</div>
+  </div>
+  <div id="minimap-wrap"><canvas id="minimap" width="190" height="190"></canvas></div>
+  <div id="vitals" class="panel">
+    <div class="vrow"><span>HEALTH</span><div class="vbar"><div id="hp-fill"></div></div><span class="vnum" id="hp-num">100</span></div>
+    <div class="vrow"><span>ARMOUR</span><div class="vbar"><div id="ar-fill"></div></div><span class="vnum" id="ar-num">0</span></div>
+  </div>
+
+  <div id="br">
+    <div><span id="speed">0</span> <span id="speed-unit">KM/H</span></div>
+    <div id="veh-name">ON FOOT</div>
+    <div id="veh-dmg"></div>
+    <div id="radio">101.2 SOL FM — Coast Pop</div>
+  </div>
+
+  <div id="dlg" class="panel hidden"><div id="dlg-avatar">S</div><div><div id="dlg-name"></div><div id="dlg-text"></div></div></div>
+  <div id="note" class="hidden"></div>
+  <div id="prompt"></div>
+  <div id="crosshair" class="hidden"></div>
+  <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+  <div id="obj-arrow" class="hidden"><span id="obj-arrow-dist"></span></div>
+  <div id="wheel" class="hidden"><div id="wheel-center"></div></div>
+</div>
+<div id="dmg"></div>
+<div id="vignette"></div>
+
+<div id="title" class="overlay">
+  <div id="title-logo">SOLMAR</div>
+  <div id="title-tag">SUN · SAND · GETAWAY</div>
+  <div>
+    <button id="title-start" class="bigbtn">START ENGINE</button>
+    <button id="title-continue" class="bigbtn ghost hidden">CONTINUE</button>
+  </div>
+  <div id="title-controls">
+    <span><b>W A S D</b> drive / walk</span><span><b>E</b> enter / exit car</span>
+    <span><b>SPACE</b> handbrake</span><span><b>MOUSE</b> aim &amp; shoot</span>
+    <span><b>1–5 / TAB</b> weapons</span><span><b>R</b> reload</span>
+    <span><b>Z X C</b> crew abilities</span><span><b>N</b> radio · <b>G</b> garage · <b>M</b> map</span>
+    <span><b>SHIFT</b> sprint</span><span><b>ESC / P</b> pause</span>
+  </div>
+  <div id="title-foot">An original open-world getaway. Eight missions, one city, no speed limit.</div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="pwrap">
+    <div class="pcol"><h2>PAUSED</h2><canvas id="pause-map" width="420" height="420"></canvas></div>
+    <div class="pcol">
+      <h2 style="font-size:22px">MISSIONS</h2>
+      <div id="pause-missions" class="panel"></div>
+      <h2 style="font-size:22px;margin-top:14px">STATS</h2>
+      <div id="pause-stats" class="panel"></div>
+      <div class="btnrow">
+        <button id="btn-resume" class="bigbtn">RESUME</button>
+        <button id="btn-save" class="bigbtn ghost">SAVE</button>
+        <button id="btn-restart" class="bigbtn ghost">RESTART MISSION</button>
+        <button id="btn-title" class="bigbtn ghost">TITLE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="garage" class="overlay hidden">
+  <div class="gwrap panel">
+    <h2>ROOK'S GARAGE</h2>
+    <div id="garage-money">$0</div>
+    <div id="garage-list"></div>
+    <div style="margin-top:16px"><button id="garage-close" class="bigbtn">BACK TO THE STREET</button></div>
+  </div>
+</div>
+
+<div id="busted" class="overlay hidden"><h1>BUSTED</h1><p>The SCP caught up with you. The ride is impounded.</p></div>
+<div id="wasted" class="overlay hidden"><h1>WASTED</h1><p>Solmar General patched you up. Try not to do it again.</p></div>
+<div id="complete" class="overlay hidden">
+  <h1>SOLMAR IS YOURS</h1>
+  <p>Every mission complete. Rook runs this city now — free roam, fares and medallions remain.</p>
+  <button id="btn-complete" class="bigbtn">KEEP PLAYING</button>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
